@@ -34,6 +34,7 @@ store = KeyStore(
     bucket=os.getenv("S3_BUCKET", ""),
     key=os.getenv("S3_KEY", "keys.json"),
     region=os.getenv("S3_REGION", "us-east-1"),
+    storage_secret=os.getenv("STORAGE_SECRET"),
 )
 
 

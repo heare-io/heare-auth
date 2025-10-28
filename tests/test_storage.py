@@ -127,3 +127,44 @@ def test_get_by_secret_no_expiry():
     key = store.get_by_secret("sec_noexpiry")
     assert key is not None
     assert key["id"] == "key_noexpiry"
+
+
+def test_encryption_roundtrip():
+    """Test that data can be encrypted and decrypted."""
+    store = KeyStore("test-bucket", "keys.json", storage_secret="test-secret-key")
+    
+    test_data = b'{"keys": [{"id": "test", "secret": "sec123"}]}'
+    
+    # Encrypt
+    encrypted = store._encrypt_data(test_data)
+    
+    # Should have header
+    assert encrypted.startswith(store.ENCRYPTION_HEADER)
+    assert encrypted != test_data
+    
+    # Decrypt
+    decrypted = store._decrypt_data(encrypted)
+    assert decrypted == test_data
+
+
+def test_encryption_disabled():
+    """Test that encryption is disabled without storage_secret."""
+    store = KeyStore("test-bucket", "keys.json")
+    
+    test_data = b'{"keys": []}'
+    
+    # Without storage_secret, data should not be encrypted
+    encrypted = store._encrypt_data(test_data)
+    assert encrypted == test_data
+    assert not encrypted.startswith(store.ENCRYPTION_HEADER)
+
+
+def test_decrypt_unencrypted_data():
+    """Test that unencrypted data passes through decryption."""
+    store = KeyStore("test-bucket", "keys.json", storage_secret="test-secret")
+    
+    unencrypted_data = b'{"keys": []}'
+    
+    # Should return unchanged
+    decrypted = store._decrypt_data(unencrypted_data)
+    assert decrypted == unencrypted_data

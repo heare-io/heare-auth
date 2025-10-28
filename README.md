@@ -31,7 +31,12 @@ export S3_BUCKET=heare-auth-keys
 export S3_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=your_key
 export AWS_SECRET_ACCESS_KEY=your_secret
+
+# Optional: Encrypt data at rest in S3
+export STORAGE_SECRET=your-secure-encryption-key
 ```
+
+**Note:** If `STORAGE_SECRET` is set, all data written to S3 will be encrypted using Fernet encryption (AES-128). The system supports transitioning from unencrypted to encrypted storage - it can read both formats.
 
 #### Optional: Metrics Configuration
 

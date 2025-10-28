@@ -31,7 +31,7 @@ def generate_key_pair() -> tuple[str, str]:
 class CLI:
     """CLI operations for managing API keys."""
 
-    def __init__(self, bucket: str, key: str, region: str):
+    def __init__(self, bucket: str, key: str, region: str, storage_secret: Optional[str] = None):
         """
         Initialize the CLI.
 
@@ -39,22 +39,32 @@ class CLI:
             bucket: S3 bucket name
             key: S3 key (file path)
             region: AWS region
+            storage_secret: Optional secret for encrypting data at rest
         """
         self.bucket = bucket
         self.key = key
+        self.storage_secret = storage_secret
         self.s3 = boto3.client("s3", region_name=region)
 
     def load_keys(self) -> list:
         """
-        Load keys from S3.
+        Load keys from S3 with encryption support.
 
         Returns:
             List of key dictionaries
         """
+        from .storage import KeyStore
+        
+        store = KeyStore(
+            bucket=self.bucket,
+            key=self.key,
+            region="us-east-1",
+            storage_secret=self.storage_secret,
+        )
+        
         try:
-            response = self.s3.get_object(Bucket=self.bucket, Key=self.key)
-            data = json.loads(response["Body"].read())
-            return data["keys"]
+            store.load_from_s3()
+            return store.get_all_keys()
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":
                 return []
@@ -62,18 +72,20 @@ class CLI:
 
     def save_keys(self, keys: list) -> None:
         """
-        Save keys to S3.
+        Save keys to S3 with encryption support.
 
         Args:
             keys: List of key dictionaries to save
         """
-        data = {"keys": keys}
-        self.s3.put_object(
-            Bucket=self.bucket,
-            Key=self.key,
-            Body=json.dumps(data, indent=2),
-            ContentType="application/json",
+        from .storage import KeyStore
+        
+        store = KeyStore(
+            bucket=self.bucket,
+            key=self.key,
+            region="us-east-1",
+            storage_secret=self.storage_secret,
         )
+        store.save_to_s3(keys)
 
     def create(
         self,
@@ -192,9 +204,10 @@ def main():
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
+@click.option("--storage-secret", envvar="STORAGE_SECRET", help="Secret for encrypting data at rest")
 @click.option("--refresh-url", envvar="REFRESH_URL", default="http://localhost:8080/refresh", help="URL to trigger refresh")
 @click.option("--no-refresh", is_flag=True, help="Skip automatic refresh")
-def create(name, metadata, secret_type, expires_at, bucket, key, region, refresh_url, no_refresh):
+def create(name, metadata, secret_type, expires_at, bucket, key, region, storage_secret, refresh_url, no_refresh):
     """Create a new API key."""
     try:
         metadata_dict = json.loads(metadata)
@@ -212,7 +225,7 @@ def create(name, metadata, secret_type, expires_at, bucket, key, region, refresh
             sys.exit(1)
 
     try:
-        cli = CLI(bucket, key, region)
+        cli = CLI(bucket, key, region, storage_secret)
         new_key = cli.create(
             name,
             metadata_dict,
@@ -256,11 +269,12 @@ def create(name, metadata, secret_type, expires_at, bucket, key, region, refresh
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
+@click.option("--storage-secret", envvar="STORAGE_SECRET", help="Secret for encrypting data at rest")
 @click.option("--detailed", "-d", is_flag=True, help="Show detailed information")
-def list(bucket, key, region, detailed):
+def list(bucket, key, region, storage_secret, detailed):
     """List all API keys."""
     try:
-        cli = CLI(bucket, key, region)
+        cli = CLI(bucket, key, region, storage_secret)
         keys = cli.list_keys()
 
         if not keys:
@@ -308,10 +322,11 @@ def list(bucket, key, region, detailed):
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
-def show(key_id, bucket, key, region):
+@click.option("--storage-secret", envvar="STORAGE_SECRET", help="Secret for encrypting data at rest")
+def show(key_id, bucket, key, region, storage_secret):
     """Show detailed information about a specific API key."""
     try:
-        cli = CLI(bucket, key, region)
+        cli = CLI(bucket, key, region, storage_secret)
         keys = cli.list_keys()
         
         key_data = next((k for k in keys if k["id"] == key_id), None)
@@ -343,13 +358,14 @@ def show(key_id, bucket, key, region):
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
+@click.option("--storage-secret", envvar="STORAGE_SECRET", help="Secret for encrypting data at rest")
 @click.option("--refresh-url", envvar="REFRESH_URL", default="http://localhost:8080/refresh", help="URL to trigger refresh")
 @click.option("--no-refresh", is_flag=True, help="Skip automatic refresh")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
-def delete(key_id, bucket, key, region, refresh_url, no_refresh, yes):
+def delete(key_id, bucket, key, region, storage_secret, refresh_url, no_refresh, yes):
     """Delete an API key by its ID."""
     try:
-        cli = CLI(bucket, key, region)
+        cli = CLI(bucket, key, region, storage_secret)
 
         # Find the key to show name
         keys = cli.list_keys()
