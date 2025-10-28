@@ -33,10 +33,15 @@ export AWS_ACCESS_KEY_ID=your_key
 export AWS_SECRET_ACCESS_KEY=your_secret
 
 # Optional: Encrypt data at rest in S3
-export STORAGE_SECRET=your-secure-encryption-key
+export STORAGE_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 ```
 
-**Note:** If `STORAGE_SECRET` is set, all data written to S3 will be encrypted using Fernet encryption (AES-128). The system supports transitioning from unencrypted to encrypted storage - it can read both formats.
+**Encryption Notes:**
+- If `STORAGE_SECRET` is set, all data written to S3 will be encrypted using Fernet encryption (AES-128)
+- The system supports transitioning from unencrypted to encrypted storage - it can read both formats
+- **Secret format**: Any string works, but use 32+ characters with high entropy
+- **Generate**: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
+- **⚠️ Important**: Back up this secret securely - if lost, you cannot decrypt your data!
 
 #### Optional: Metrics Configuration
 
