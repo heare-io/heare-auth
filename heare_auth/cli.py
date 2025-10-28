@@ -255,5 +255,26 @@ def delete(key_id, bucket, key, region, refresh_url, yes):
         sys.exit(1)
 
 
+@main.command()
+@click.option("--url", default="http://localhost:8080/refresh", help="Refresh endpoint URL")
+def refresh(url):
+    """Trigger a refresh of keys from S3."""
+    try:
+        response = requests.post(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("success"):
+            click.echo(f"✓ Refresh successful - loaded {data.get('keys_loaded', 0)} keys")
+        else:
+            click.echo("✗ Refresh failed", err=True)
+            sys.exit(1)
+    except requests.exceptions.RequestException as e:
+        click.echo(f"Error: Failed to refresh: {e}", err=True)
+        click.echo("\nTip: If running against a Dokku deployment, use:", err=True)
+        click.echo("  dokku run <app-name> heare-auth refresh", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

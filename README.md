@@ -117,6 +117,25 @@ heare-auth list
 heare-auth delete key_A1h2xcejqtf2nbrexx3vqjhp41
 ```
 
+### Refresh keys
+After creating or deleting keys, you need to refresh the service to load the changes:
+
+**Local development:**
+```bash
+heare-auth refresh
+```
+
+**Dokku deployment:**
+```bash
+dokku run auth heare-auth refresh
+```
+
+Or use as a shortcut:
+```bash
+alias auth-refresh='dokku run auth heare-auth refresh'
+auth-refresh
+```
+
 ## API Endpoints
 
 ### `POST /verify`

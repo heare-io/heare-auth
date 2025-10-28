@@ -168,8 +168,21 @@ curl -X POST http://localhost:8080/verify \
 
 ### Refresh Keys from S3
 
-Only works from localhost:
+After creating or deleting keys, refresh the service to reload them from S3.
 
+**Using the CLI (recommended):**
+
+Local development:
+```bash
+heare-auth refresh
+```
+
+Dokku deployment:
+```bash
+dokku run auth heare-auth refresh
+```
+
+**Using curl (from localhost only):**
 ```bash
 curl -X POST http://localhost:8080/refresh
 ```
@@ -421,12 +434,23 @@ echo '{"keys": []}' | aws s3 cp - s3://$S3_BUCKET/keys.json
 
 ### Refresh Endpoint Returns 403
 
-The refresh endpoint only works from localhost. If deploying, you need to:
+The refresh endpoint only works from localhost. Use the CLI refresh command instead:
 
-1. SSH into the server
-2. Run: `curl -X POST http://localhost:8080/refresh`
+**Dokku:**
+```bash
+dokku run auth heare-auth refresh
+```
 
-Or use the CLI with `--refresh-url` pointing to localhost when running on the server.
+**Docker:**
+```bash
+docker exec <container-id> heare-auth refresh
+```
+
+**Direct:**
+```bash
+# Inside the container
+heare-auth refresh
+```
 
 ### Keys Not Loading
 
