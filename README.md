@@ -97,11 +97,52 @@ uvicorn heare_auth.main:app --host 0.0.0.0 --port 8080
 
 ### Verify an API Key
 
+**cURL:**
 ```bash
 curl -X POST http://localhost:8080/verify \
   -H "Content-Type: application/json" \
   -H "User-Agent: MyService/1.0" \
   -d '{"api_key": "sec_A1h2xdfjqtf2nbrexx3vqjhp42"}'
+```
+
+**Python:**
+```python
+import requests
+
+def verify_api_key(api_key: str, service_url: str = "http://localhost:8080") -> dict:
+    """
+    Verify an API key against the heare-auth service.
+    
+    Args:
+        api_key: The API key secret to verify
+        service_url: Base URL of the heare-auth service
+        
+    Returns:
+        Dict with verification result
+        
+    Raises:
+        requests.HTTPError: If verification fails
+    """
+    response = requests.post(
+        f"{service_url}/verify",
+        json={"api_key": api_key},
+        headers={"User-Agent": "MyService/1.0"},
+        timeout=5
+    )
+    response.raise_for_status()
+    return response.json()
+
+# Usage
+try:
+    result = verify_api_key("sec_A1h2xdfjqtf2nbrexx3vqjhp42")
+    if result["valid"]:
+        print(f"✓ Valid key: {result['name']}")
+        print(f"  Key ID: {result['key_id']}")
+        print(f"  Metadata: {result['metadata']}")
+    else:
+        print(f"✗ Invalid key: {result.get('error')}")
+except requests.HTTPError as e:
+    print(f"✗ Verification failed: {e}")
 ```
 
 Response:
