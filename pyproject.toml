@@ -1,0 +1,18 @@
+[project]
+name = "heare-auth"
+version = "0.1.0"
+description = "Simple API key validation service"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "boto3>=1.34.0",
+    "click>=8.1.0",
+    "requests>=2.31.0",
+    "structlog>=24.1.0",
+    "heare-ids>=0.1.0",
+]
+
+[project.scripts]
+heare-auth = "heare_auth.cli:main"
