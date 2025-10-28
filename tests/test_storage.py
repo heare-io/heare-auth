@@ -1,5 +1,7 @@
 """Tests for storage module."""
 
+from datetime import datetime, timedelta, timezone
+
 from heare_auth.storage import KeyStore
 
 
@@ -65,3 +67,63 @@ def test_get_all_keys():
     assert len(keys) == 2
     assert any(k["id"] == "key_1" for k in keys)
     assert any(k["id"] == "key_2" for k in keys)
+
+
+def test_get_by_secret_expired():
+    """Test that expired keys are not returned."""
+    store = KeyStore("test-bucket", "keys.json")
+    
+    # Create an expired key
+    expired_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+    store.keys_by_secret = {
+        "sec_expired": {
+            "id": "key_expired",
+            "secret": "sec_expired",
+            "name": "Expired Key",
+            "expires_at": expired_time,
+        }
+    }
+    
+    # Should return None for expired key
+    key = store.get_by_secret("sec_expired")
+    assert key is None
+
+
+def test_get_by_secret_not_expired():
+    """Test that non-expired keys are returned."""
+    store = KeyStore("test-bucket", "keys.json")
+    
+    # Create a future expiry key
+    future_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+    store.keys_by_secret = {
+        "sec_valid": {
+            "id": "key_valid",
+            "secret": "sec_valid",
+            "name": "Valid Key",
+            "expires_at": future_time,
+        }
+    }
+    
+    # Should return the key
+    key = store.get_by_secret("sec_valid")
+    assert key is not None
+    assert key["id"] == "key_valid"
+
+
+def test_get_by_secret_no_expiry():
+    """Test that keys without expiry are returned."""
+    store = KeyStore("test-bucket", "keys.json")
+    
+    store.keys_by_secret = {
+        "sec_noexpiry": {
+            "id": "key_noexpiry",
+            "secret": "sec_noexpiry",
+            "name": "No Expiry Key",
+            "expires_at": None,
+        }
+    }
+    
+    # Should return the key
+    key = store.get_by_secret("sec_noexpiry")
+    assert key is not None
+    assert key["id"] == "key_noexpiry"

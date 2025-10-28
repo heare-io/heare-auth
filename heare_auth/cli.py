@@ -11,6 +11,8 @@ import requests
 from botocore.exceptions import ClientError
 from heare import ids
 
+from .models import SecretType
+
 
 def generate_key_pair() -> tuple[str, str]:
     """
@@ -71,13 +73,22 @@ class CLI:
             ContentType="application/json",
         )
 
-    def create(self, name: str, metadata: dict, refresh_url: Optional[str]) -> dict:
+    def create(
+        self,
+        name: str,
+        metadata: dict,
+        secret_type: str,
+        expires_at: Optional[str],
+        refresh_url: Optional[str],
+    ) -> dict:
         """
         Create a new API key.
 
         Args:
             name: Human-readable name for the key
             metadata: Arbitrary metadata dictionary
+            secret_type: Type of secret (shared_secret, etc.)
+            expires_at: Optional expiration timestamp (ISO 8601)
             refresh_url: Optional URL to trigger refresh
 
         Returns:
@@ -86,12 +97,16 @@ class CLI:
         keys = self.load_keys()
 
         key_id, secret = generate_key_pair()
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         new_key = {
             "id": key_id,
             "secret": secret,
             "name": name,
-            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "secret_type": secret_type,
+            "created_at": now,
+            "updated_at": None,
+            "expires_at": expires_at,
             "metadata": metadata,
         }
 
@@ -165,12 +180,19 @@ def main():
 @main.command()
 @click.option("--name", required=True, help="Name for the API key")
 @click.option("--metadata", default="{}", help="JSON metadata")
+@click.option(
+    "--secret-type",
+    type=click.Choice([SecretType.SHARED_SECRET.value], case_sensitive=False),
+    default=SecretType.SHARED_SECRET.value,
+    help="Type of secret",
+)
+@click.option("--expires-at", help="Expiration date/time in ISO 8601 format (e.g., 2025-12-31T23:59:59Z)")
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
 @click.option("--refresh-url", envvar="REFRESH_URL", default="http://localhost:8080/refresh", help="URL to trigger refresh")
 @click.option("--no-refresh", is_flag=True, help="Skip automatic refresh")
-def create(name, metadata, bucket, key, region, refresh_url, no_refresh):
+def create(name, metadata, secret_type, expires_at, bucket, key, region, refresh_url, no_refresh):
     """Create a new API key."""
     try:
         metadata_dict = json.loads(metadata)
@@ -178,15 +200,35 @@ def create(name, metadata, bucket, key, region, refresh_url, no_refresh):
         click.echo(f"Error: Invalid JSON in metadata: {e}", err=True)
         sys.exit(1)
 
+    # Validate expires_at if provided
+    if expires_at:
+        try:
+            datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except ValueError as e:
+            click.echo(f"Error: Invalid expires_at format: {e}", err=True)
+            click.echo("Use ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ", err=True)
+            sys.exit(1)
+
     try:
         cli = CLI(bucket, key, region)
-        new_key = cli.create(name, metadata_dict, refresh_url if not no_refresh else None)
+        new_key = cli.create(
+            name,
+            metadata_dict,
+            secret_type,
+            expires_at,
+            refresh_url if not no_refresh else None,
+        )
 
         click.echo("\nCreated API key:")
-        click.echo(f"  ID:     {new_key['id']}")
-        click.echo(f"  Secret: {new_key['secret']}")
-        click.echo(f"  Name:   {new_key['name']}")
-        click.echo(f"  Created: {new_key['created_at']}")
+        click.echo(f"  ID:          {new_key['id']}")
+        click.echo(f"  Secret:      {new_key['secret']}")
+        click.echo(f"  Name:        {new_key['name']}")
+        click.echo(f"  Secret Type: {new_key['secret_type']}")
+        click.echo(f"  Created:     {new_key['created_at']}")
+        if new_key.get('expires_at'):
+            click.echo(f"  Expires:     {new_key['expires_at']}")
+        else:
+            click.echo(f"  Expires:     Never")
         
         # Try to refresh if not skipped
         if not no_refresh:
@@ -212,7 +254,8 @@ def create(name, metadata, bucket, key, region, refresh_url, no_refresh):
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
-def list(bucket, key, region):
+@click.option("--detailed", "-d", is_flag=True, help="Show detailed information")
+def list(bucket, key, region, detailed):
     """List all API keys."""
     try:
         cli = CLI(bucket, key, region)
@@ -222,17 +265,72 @@ def list(bucket, key, region):
             click.echo("No API keys found.")
             return
 
-        click.echo("\nAPI Keys:")
-        click.echo("━" * 80)
-        click.echo(f"{'Name':<30} {'Key ID':<35} {'Created':<15}")
-        click.echo("━" * 80)
+        if detailed:
+            # Detailed view with all fields
+            click.echo("\nAPI Keys (Detailed):")
+            click.echo("━" * 120)
+            for i, k in enumerate(keys):
+                if i > 0:
+                    click.echo()
+                click.echo(f"Name:        {k['name']}")
+                click.echo(f"Key ID:      {k['id']}")
+                click.echo(f"Secret Type: {k.get('secret_type', 'shared_secret')}")
+                click.echo(f"Created:     {k.get('created_at', 'N/A')}")
+                click.echo(f"Updated:     {k.get('updated_at', 'Never')}")
+                click.echo(f"Expires:     {k.get('expires_at', 'Never')}")
+                if k.get('metadata'):
+                    click.echo(f"Metadata:    {json.dumps(k['metadata'])}")
+            click.echo("━" * 120)
+            click.echo(f"Total: {len(keys)} keys\n")
+        else:
+            # Simple table view
+            click.echo("\nAPI Keys:")
+            click.echo("━" * 100)
+            click.echo(f"{'Name':<30} {'Key ID':<35} {'Type':<15} {'Created':<15}")
+            click.echo("━" * 100)
 
-        for k in keys:
-            created = k["created_at"][:10]
-            click.echo(f"{k['name']:<30} {k['id']:<35} {created:<15}")
+            for k in keys:
+                created = k.get("created_at", "N/A")[:10] if k.get("created_at") else "N/A"
+                secret_type = k.get("secret_type", "shared_secret")
+                click.echo(f"{k['name']:<30} {k['id']:<35} {secret_type:<15} {created:<15}")
 
+            click.echo("━" * 100)
+            click.echo(f"Total: {len(keys)} keys\n")
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("key_id")
+@click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
+@click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
+@click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
+def show(key_id, bucket, key, region):
+    """Show detailed information about a specific API key."""
+    try:
+        cli = CLI(bucket, key, region)
+        keys = cli.list_keys()
+        
+        key_data = next((k for k in keys if k["id"] == key_id), None)
+        
+        if not key_data:
+            click.echo(f"Error: API key not found: {key_id}", err=True)
+            sys.exit(1)
+        
+        click.echo("\nAPI Key Details:")
         click.echo("━" * 80)
-        click.echo(f"Total: {len(keys)} keys\n")
+        click.echo(f"Name:        {key_data['name']}")
+        click.echo(f"Key ID:      {key_data['id']}")
+        click.echo(f"Secret Type: {key_data.get('secret_type', 'shared_secret')}")
+        click.echo(f"Created:     {key_data.get('created_at', 'N/A')}")
+        click.echo(f"Updated:     {key_data.get('updated_at', 'Never')}")
+        click.echo(f"Expires:     {key_data.get('expires_at', 'Never')}")
+        if key_data.get('metadata'):
+            click.echo(f"Metadata:    {json.dumps(key_data['metadata'], indent=2)}")
+        click.echo("━" * 80)
+        click.echo("\n⚠️  The secret is not shown for security reasons.")
+        
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

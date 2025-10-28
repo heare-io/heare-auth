@@ -1,8 +1,15 @@
 """Pydantic models for API requests and responses."""
 
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+
+class SecretType(str, Enum):
+    """Enum for secret types."""
+
+    SHARED_SECRET = "shared_secret"
 
 
 class VerifyRequest(BaseModel):

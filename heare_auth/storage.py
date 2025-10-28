@@ -1,6 +1,7 @@
 """S3 storage and in-memory key store."""
 
 import json
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import boto3
@@ -67,14 +68,33 @@ class KeyStore:
     def get_by_secret(self, secret: str) -> Optional[dict]:
         """
         Get key metadata by secret (for authentication).
+        
+        Checks expiration and returns None if expired.
 
         Args:
             secret: The secret value to look up
 
         Returns:
-            Key data dictionary if found, None otherwise
+            Key data dictionary if found and not expired, None otherwise
         """
-        return self.keys_by_secret.get(secret)
+        key_data = self.keys_by_secret.get(secret)
+        
+        if key_data is None:
+            return None
+        
+        # Check if expired
+        expires_at = key_data.get("expires_at")
+        if expires_at:
+            try:
+                expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                if now > expiry:
+                    return None  # Key has expired
+            except (ValueError, AttributeError):
+                # Invalid expiry format, treat as not expired
+                pass
+        
+        return key_data
 
     def get_by_id(self, key_id: str) -> Optional[dict]:
         """

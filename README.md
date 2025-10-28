@@ -64,10 +64,12 @@ heare-auth create --name "My Service" --metadata '{"env": "prod"}'
 Output:
 ```
 Created API key:
-  ID:     key_A1h2xcejqtf2nbrexx3vqjhp41
-  Secret: sec_A1h2xdfjqtf2nbrexx3vqjhp42
-  Name:   My Service
-  Created: 2024-01-20T10:30:00Z
+  ID:          key_A1h2xcejqtf2nbrexx3vqjhp41
+  Secret:      sec_A1h2xdfjqtf2nbrexx3vqjhp42
+  Name:        My Service
+  Secret Type: shared_secret
+  Created:     2024-01-20T10:30:00Z
+  Expires:     Never
 
 ✓ Service refreshed - 5 keys loaded
 
@@ -108,14 +110,33 @@ Response:
 
 ### Create a key
 ```bash
+# Basic key
+heare-auth create --name "Key Name"
+
+# With metadata
 heare-auth create --name "Key Name" --metadata '{"key": "value"}'
+
+# With expiration (ISO 8601 format)
+heare-auth create --name "Key Name" --expires-at "2025-12-31T23:59:59Z"
+
+# With specific secret type (currently only shared_secret)
+heare-auth create --name "Key Name" --secret-type shared_secret
 ```
 
 The service will automatically refresh after creating the key (when run from inside the container).
 
 ### List all keys
 ```bash
+# Simple list
 heare-auth list
+
+# Detailed view with all fields
+heare-auth list --detailed
+```
+
+### Show key details
+```bash
+heare-auth show key_A1h2xcejqtf2nbrexx3vqjhp41
 ```
 
 ### Delete a key
