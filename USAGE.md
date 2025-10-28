@@ -52,9 +52,13 @@ Created API key:
   Name:   My Service
   Created: 2024-01-20T10:30:00Z
 
+✓ Service refreshed - 5 keys loaded
+
 ⚠️  Save the SECRET securely - it will not be shown again!
     Use the ID for reference and logging.
 ```
+
+**Automatic Refresh:** When run from inside the container (e.g., via `dokku enter`), the CLI automatically refreshes the service to load the new key. If the refresh fails, you'll see a warning and can run `heare-auth refresh` manually.
 
 ### Key with Metadata
 
@@ -64,15 +68,22 @@ heare-auth create \
   --metadata '{"environment": "production", "service": "api-gateway", "owner": "team@example.com"}'
 ```
 
-### With Auto-Refresh
+### Skip Auto-Refresh
 
-If you have the server running locally:
+By default, create and delete commands automatically refresh the service. To skip this:
 
 ```bash
-export REFRESH_URL=http://localhost:8080/refresh
+heare-auth create --name "My Service" --no-refresh
+heare-auth delete key_xxx --no-refresh
+```
 
-heare-auth create --name "My Service"
-# Automatically triggers /refresh endpoint
+This is useful when creating multiple keys in bulk - skip refresh for each one, then manually refresh once at the end:
+
+```bash
+heare-auth create --name "Service 1" --no-refresh
+heare-auth create --name "Service 2" --no-refresh
+heare-auth create --name "Service 3" --no-refresh
+heare-auth refresh
 ```
 
 ## Managing API Keys
@@ -104,6 +115,15 @@ heare-auth delete key_A1h2xcejqtf2nbrexx3vqjhp41
 # Skip confirmation
 heare-auth delete key_A1h2xcejqtf2nbrexx3vqjhp41 --yes
 ```
+
+Output:
+```
+Delete API key 'key_A1h2xcejqtf2nbrexx3vqjhp41' (My Service)? [y/N]: y
+✓ Deleted successfully.
+✓ Service refreshed - 4 keys loaded
+```
+
+The service is automatically refreshed after deletion.
 
 ## Running the Server
 
@@ -168,9 +188,9 @@ curl -X POST http://localhost:8080/verify \
 
 ### Refresh Keys from S3
 
-After creating or deleting keys, refresh the service to reload them from S3.
+**Automatic refresh:** Create and delete commands automatically refresh the service when run from inside the container.
 
-**Using the CLI (recommended):**
+**Manual refresh (if needed):**
 
 Local development:
 ```bash
@@ -179,16 +199,12 @@ heare-auth refresh
 
 Dokku deployment:
 ```bash
-# Enter the running container
-dokku enter auth web
+dokku enter auth web heare-auth refresh
+```
 
-# Inside the container, run either:
-heare-auth refresh
-# or
-curl -X POST http://localhost:8080/refresh
-
-# Exit the container
-exit
+Response:
+```
+✓ Refresh successful - loaded 5 keys
 ```
 
 **Using curl directly (from localhost only):**

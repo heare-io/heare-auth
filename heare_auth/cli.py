@@ -168,8 +168,9 @@ def main():
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
-@click.option("--refresh-url", envvar="REFRESH_URL", help="URL to trigger refresh")
-def create(name, metadata, bucket, key, region, refresh_url):
+@click.option("--refresh-url", envvar="REFRESH_URL", default="http://localhost:8080/refresh", help="URL to trigger refresh")
+@click.option("--no-refresh", is_flag=True, help="Skip automatic refresh")
+def create(name, metadata, bucket, key, region, refresh_url, no_refresh):
     """Create a new API key."""
     try:
         metadata_dict = json.loads(metadata)
@@ -179,13 +180,27 @@ def create(name, metadata, bucket, key, region, refresh_url):
 
     try:
         cli = CLI(bucket, key, region)
-        new_key = cli.create(name, metadata_dict, refresh_url)
+        new_key = cli.create(name, metadata_dict, refresh_url if not no_refresh else None)
 
         click.echo("\nCreated API key:")
         click.echo(f"  ID:     {new_key['id']}")
         click.echo(f"  Secret: {new_key['secret']}")
         click.echo(f"  Name:   {new_key['name']}")
         click.echo(f"  Created: {new_key['created_at']}")
+        
+        # Try to refresh if not skipped
+        if not no_refresh:
+            try:
+                response = requests.post(refresh_url, timeout=5)
+                response.raise_for_status()
+                data = response.json()
+                if data.get("success"):
+                    click.echo(f"\n✓ Service refreshed - {data.get('keys_loaded', 0)} keys loaded")
+            except Exception as e:
+                click.echo(f"\n⚠️  Warning: Could not refresh service: {e}", err=True)
+                click.echo("   The key was created but the service was not refreshed.", err=True)
+                click.echo("   Run 'heare-auth refresh' manually to load the new key.", err=True)
+        
         click.echo("\n⚠️  Save the SECRET securely - it will not be shown again!")
         click.echo("    Use the ID for reference and logging.")
     except Exception as e:
@@ -228,9 +243,10 @@ def list(bucket, key, region):
 @click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
 @click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
 @click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
-@click.option("--refresh-url", envvar="REFRESH_URL", help="URL to trigger refresh")
+@click.option("--refresh-url", envvar="REFRESH_URL", default="http://localhost:8080/refresh", help="URL to trigger refresh")
+@click.option("--no-refresh", is_flag=True, help="Skip automatic refresh")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
-def delete(key_id, bucket, key, region, refresh_url, yes):
+def delete(key_id, bucket, key, region, refresh_url, no_refresh, yes):
     """Delete an API key by its ID."""
     try:
         cli = CLI(bucket, key, region)
@@ -248,8 +264,21 @@ def delete(key_id, bucket, key, region, refresh_url, yes):
                 click.echo("Cancelled.")
                 return
 
-        cli.delete(key_id, refresh_url)
-        click.echo("Deleted successfully.")
+        cli.delete(key_id, refresh_url if not no_refresh else None)
+        click.echo("✓ Deleted successfully.")
+        
+        # Try to refresh if not skipped
+        if not no_refresh:
+            try:
+                response = requests.post(refresh_url, timeout=5)
+                response.raise_for_status()
+                data = response.json()
+                if data.get("success"):
+                    click.echo(f"✓ Service refreshed - {data.get('keys_loaded', 0)} keys loaded")
+            except Exception as e:
+                click.echo(f"\n⚠️  Warning: Could not refresh service: {e}", err=True)
+                click.echo("   The key was deleted but the service was not refreshed.", err=True)
+                click.echo("   Run 'heare-auth refresh' manually to apply the change.", err=True)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)

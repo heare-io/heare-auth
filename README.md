@@ -69,9 +69,13 @@ Created API key:
   Name:   My Service
   Created: 2024-01-20T10:30:00Z
 
+✓ Service refreshed - 5 keys loaded
+
 ⚠️  Save the SECRET securely - it will not be shown again!
     Use the ID for reference and logging.
 ```
+
+**Note:** When run from inside the container, the service automatically refreshes to load the new key.
 
 ### Start the Server
 
@@ -107,6 +111,8 @@ Response:
 heare-auth create --name "Key Name" --metadata '{"key": "value"}'
 ```
 
+The service will automatically refresh after creating the key (when run from inside the container).
+
 ### List all keys
 ```bash
 heare-auth list
@@ -117,32 +123,25 @@ heare-auth list
 heare-auth delete key_A1h2xcejqtf2nbrexx3vqjhp41
 ```
 
-### Refresh keys
-After creating or deleting keys, you need to refresh the service to load the changes:
+The service will automatically refresh after deleting the key (when run from inside the container).
+
+### Manual refresh
+If needed, you can manually refresh:
 
 **Local development:**
 ```bash
 heare-auth refresh
 ```
 
-**Dokku deployment:**
+**Dokku deployment (from host):**
 ```bash
-# Enter the running container
-dokku enter auth web
-
-# Inside the container:
-curl -X POST http://localhost:8080/refresh
-# or
-heare-auth refresh
-
-# Exit
-exit
+dokku enter auth web heare-auth refresh
 ```
 
-Create an alias for convenience:
+To skip automatic refresh, use `--no-refresh`:
 ```bash
-alias auth-refresh='dokku enter auth web bash -c "curl -X POST http://localhost:8080/refresh"'
-auth-refresh
+heare-auth create --name "Key Name" --no-refresh
+heare-auth delete key_xxx --no-refresh
 ```
 
 ## API Endpoints
