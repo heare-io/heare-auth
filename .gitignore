@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 .persona
+
+# Agent scratchpad
+.agent-scratchpad/
