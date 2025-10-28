@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Post-compile hook for Heroku buildpack
+# Installs the local package in editable mode
+
+set -e
+
+echo "-----> Installing heare-auth package..."
+pip install -e .
+echo "-----> heare-auth package installed successfully"
