@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -9,6 +10,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 
 from .models import HealthResponse, RefreshResponse, VerifyRequest, VerifyResponse
+from .stats import get_stats_client
 from .storage import KeyStore
 
 # Configure structlog for JSON output
@@ -39,16 +41,44 @@ store = KeyStore(
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
     # Startup
+    start_time = time.time()
+    stats_client = get_stats_client()
+    
     try:
         count = store.load_from_s3()
         logger.info("startup", keys_loaded=count)
+        
+        # Track startup metrics
+        if stats_client:
+            try:
+                with stats_client.pipeline() as pipe:
+                    pipe.incr('startup.success')
+                    pipe.gauge('keys.count', count)
+                    pipe.time('startup.duration', (time.time() - start_time) * 1000)
+            except Exception:
+                pass
     except Exception as e:
         logger.error("startup_failed", error=str(e))
+        
+        # Track startup failure
+        if stats_client:
+            try:
+                with stats_client.pipeline() as pipe:
+                    pipe.incr('startup.failed')
+            except Exception:
+                pass
+        
         raise
 
     yield
 
-    # Shutdown (nothing to do for now)
+    # Shutdown
+    if stats_client:
+        try:
+            with stats_client.pipeline() as pipe:
+                pipe.incr('shutdown')
+        except Exception:
+            pass
 
 
 # Initialize FastAPI app
@@ -76,7 +106,11 @@ async def verify(request: VerifyRequest, http_request: Request):
         HTTPException: 403 if the API key is invalid
         HTTPException: 400 if the request is malformed
     """
+    start_time = time.time()
     user_agent = http_request.headers.get("user-agent", "unknown")
+    
+    # Get stats client
+    stats_client = get_stats_client()
 
     # Look up by secret
     key_data = store.get_by_secret(request.api_key)
@@ -87,6 +121,17 @@ async def verify(request: VerifyRequest, http_request: Request):
             secret_prefix=request.api_key[:4] if len(request.api_key) >= 4 else "***",
             user_agent=user_agent,
         )
+        
+        # Track failed verification
+        if stats_client:
+            try:
+                with stats_client.pipeline() as pipe:
+                    pipe.incr('verify.requests')
+                    pipe.incr('verify.failed')
+                    pipe.time('verify.duration', (time.time() - start_time) * 1000)
+            except Exception:
+                pass  # Don't let metrics failures affect the API
+        
         raise HTTPException(status_code=403, detail={"valid": False, "error": "Invalid API key"})
 
     # Log successful verification with key_id (NOT secret)
@@ -96,6 +141,16 @@ async def verify(request: VerifyRequest, http_request: Request):
         key_name=key_data["name"],
         user_agent=user_agent,
     )
+    
+    # Track successful verification
+    if stats_client:
+        try:
+            with stats_client.pipeline() as pipe:
+                pipe.incr('verify.requests')
+                pipe.incr('verify.success')
+                pipe.time('verify.duration', (time.time() - start_time) * 1000)
+        except Exception:
+            pass  # Don't let metrics failures affect the API
 
     return VerifyResponse(
         valid=True,
@@ -119,6 +174,9 @@ async def refresh(request: Request):
     Raises:
         HTTPException: 403 if not accessed from localhost
     """
+    start_time = time.time()
+    stats_client = get_stats_client()
+    
     # Check if request is from localhost
     client_host = request.client.host if request.client else None
     forwarded_for = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
@@ -129,6 +187,16 @@ async def refresh(request: Request):
         "",
     ):
         logger.warning("refresh_rejected", client_host=client_host, forwarded_for=forwarded_for)
+        
+        # Track rejected refresh
+        if stats_client:
+            try:
+                with stats_client.pipeline() as pipe:
+                    pipe.incr('refresh.requests')
+                    pipe.incr('refresh.rejected')
+            except Exception:
+                pass
+        
         raise HTTPException(
             status_code=403, detail={"error": "Refresh endpoint only accessible from localhost"}
         )
@@ -136,6 +204,17 @@ async def refresh(request: Request):
     try:
         count = store.load_from_s3()
         logger.info("refresh_success", keys_loaded=count)
+        
+        # Track successful refresh
+        if stats_client:
+            try:
+                with stats_client.pipeline() as pipe:
+                    pipe.incr('refresh.requests')
+                    pipe.incr('refresh.success')
+                    pipe.gauge('keys.count', count)
+                    pipe.time('refresh.duration', (time.time() - start_time) * 1000)
+            except Exception:
+                pass
 
         return RefreshResponse(
             success=True,
@@ -144,6 +223,16 @@ async def refresh(request: Request):
         )
     except Exception as e:
         logger.error("refresh_failed", error=str(e))
+        
+        # Track failed refresh
+        if stats_client:
+            try:
+                with stats_client.pipeline() as pipe:
+                    pipe.incr('refresh.requests')
+                    pipe.incr('refresh.failed')
+            except Exception:
+                pass
+        
         raise HTTPException(status_code=500, detail={"error": f"Failed to refresh keys: {str(e)}"})
 
 
@@ -155,4 +244,16 @@ async def health():
     Returns:
         Health response with current status and key count
     """
-    return HealthResponse(status="ok", keys_count=len(store.keys_by_secret))
+    stats_client = get_stats_client()
+    keys_count = len(store.keys_by_secret)
+    
+    # Track health check
+    if stats_client:
+        try:
+            with stats_client.pipeline() as pipe:
+                pipe.incr('health.requests')
+                pipe.gauge('keys.count', keys_count)
+        except Exception:
+            pass
+    
+    return HealthResponse(status="ok", keys_count=keys_count)

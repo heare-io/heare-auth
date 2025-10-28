@@ -16,6 +16,8 @@ dependencies = [
     "requests>=2.31.0",
     "structlog>=24.1.0",
     "heare-ids>=0.1.0",
+    "heare-stats-client>=0.0.8",
+    "statsd>=4.0.1",
 ]
 
 [project.scripts]

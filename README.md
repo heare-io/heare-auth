@@ -33,6 +33,28 @@ export AWS_ACCESS_KEY_ID=your_key
 export AWS_SECRET_ACCESS_KEY=your_secret
 ```
 
+#### Optional: Metrics Configuration
+
+To enable metrics collection via [heare-stats-client](https://github.com/heare-io/heare-stats-client):
+
+```bash
+export PROTOCOL=http
+export DEST_HOST=stats-bridge.dokku.heare.io
+export DEST_PORT=443
+export SECRET=your_metrics_secret
+```
+
+The service will track:
+- `heare-auth.verify.requests` - Total verification requests
+- `heare-auth.verify.success` - Successful verifications
+- `heare-auth.verify.failed` - Failed verifications
+- `heare-auth.verify.duration` - Verification response time (ms)
+- `heare-auth.refresh.requests` - Total refresh requests
+- `heare-auth.refresh.success` - Successful refreshes
+- `heare-auth.keys.count` - Current number of loaded keys
+- `heare-auth.startup.*` - Startup metrics
+- `heare-auth.health.requests` - Health check requests
+
 ### Create an API Key
 
 ```bash
