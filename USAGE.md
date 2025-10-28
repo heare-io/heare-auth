@@ -179,10 +179,19 @@ heare-auth refresh
 
 Dokku deployment:
 ```bash
-dokku run auth heare-auth refresh
+# Enter the running container
+dokku enter auth web
+
+# Inside the container, run either:
+heare-auth refresh
+# or
+curl -X POST http://localhost:8080/refresh
+
+# Exit the container
+exit
 ```
 
-**Using curl (from localhost only):**
+**Using curl directly (from localhost only):**
 ```bash
 curl -X POST http://localhost:8080/refresh
 ```
@@ -434,19 +443,29 @@ echo '{"keys": []}' | aws s3 cp - s3://$S3_BUCKET/keys.json
 
 ### Refresh Endpoint Returns 403
 
-The refresh endpoint only works from localhost. Use the CLI refresh command instead:
+The refresh endpoint only works from localhost. You need to access it from inside the running container:
 
 **Dokku:**
 ```bash
-dokku run auth heare-auth refresh
+# Enter the running container
+dokku enter auth web
+# Then inside:
+heare-auth refresh
+# or
+curl -X POST http://localhost:8080/refresh
 ```
 
 **Docker:**
 ```bash
-docker exec <container-id> heare-auth refresh
+# Execute inside running container
+docker exec -it <container-id> bash
+# Then inside:
+heare-auth refresh
+# or
+curl -X POST http://localhost:8080/refresh
 ```
 
-**Direct:**
+**Direct (SSH into server):**
 ```bash
 # Inside the container
 heare-auth refresh

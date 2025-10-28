@@ -127,12 +127,21 @@ heare-auth refresh
 
 **Dokku deployment:**
 ```bash
-dokku run auth heare-auth refresh
+# Enter the running container
+dokku enter auth web
+
+# Inside the container:
+curl -X POST http://localhost:8080/refresh
+# or
+heare-auth refresh
+
+# Exit
+exit
 ```
 
-Or use as a shortcut:
+Create an alias for convenience:
 ```bash
-alias auth-refresh='dokku run auth heare-auth refresh'
+alias auth-refresh='dokku enter auth web bash -c "curl -X POST http://localhost:8080/refresh"'
 auth-refresh
 ```
 
