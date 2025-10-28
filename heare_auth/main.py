@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import structlog
 from fastapi import FastAPI, HTTPException, Request
 
-from .models import HealthResponse, RefreshResponse, VerifyRequest, VerifyResponse
+from .models import RefreshResponse, VerifyRequest, VerifyResponse
 from .stats import get_stats_client
 from .storage import KeyStore
 
@@ -236,13 +236,13 @@ async def refresh(request: Request):
         raise HTTPException(status_code=500, detail={"error": f"Failed to refresh keys: {str(e)}"})
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 async def health():
     """
     Health check endpoint.
 
     Returns:
-        Health response with current status and key count
+        Minimal health response without revealing service details
     """
     stats_client = get_stats_client()
     keys_count = len(store.keys_by_secret)
@@ -256,4 +256,5 @@ async def health():
         except Exception:
             pass
     
-    return HealthResponse(status="ok", keys_count=keys_count)
+    # Return minimal response - just "ok" without revealing it's an auth service
+    return {"status": "ok"}

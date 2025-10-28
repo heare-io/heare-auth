@@ -178,7 +178,14 @@ Validate an API key and return its metadata.
 Reload keys from S3 (localhost only).
 
 ### `GET /health`
-Health check endpoint.
+Health check endpoint. Returns minimal status information without revealing service details.
+
+**Response (200 OK):**
+```json
+{
+  "status": "ok"
+}
+```
 
 ## Architecture
 

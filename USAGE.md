@@ -230,10 +230,11 @@ curl http://localhost:8080/health
 Response:
 ```json
 {
-  "status": "ok",
-  "keys_count": 5
+  "status": "ok"
 }
 ```
+
+**Note:** The health endpoint returns minimal information and does not reveal the number of keys or service type for security reasons.
 
 ## Client Integration
 
