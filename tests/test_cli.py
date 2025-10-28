@@ -29,3 +29,16 @@ def test_generate_key_pair_uniqueness():
     assert secret1 != secret2
     assert key_id1 != secret1
     assert key_id2 != secret2
+
+
+def test_secret_length():
+    """Test that secrets are 64 characters for high entropy."""
+    key_id, secret = generate_key_pair()
+    
+    assert len(secret) == 64, f"Secret should be 64 chars, got {len(secret)}"
+    assert secret.startswith("sec_")
+    
+    # Test multiple generations to ensure consistency
+    for _ in range(10):
+        _, s = generate_key_pair()
+        assert len(s) == 64

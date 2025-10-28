@@ -17,12 +17,14 @@ from .models import SecretType
 def generate_key_pair() -> tuple[str, str]:
     """
     Generate a key ID and secret using heare-ids.
+    
+    Generates a 64-character secret with high entropy for security.
 
     Returns:
         Tuple of (key_id, secret)
     """
     key_id = ids.new("key")
-    secret = ids.new("sec")
+    secret = ids.new("sec", entropy=51)  # 64 chars total (sec_ + metadata + 51 entropy)
     return key_id, secret
 
 
