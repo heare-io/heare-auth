@@ -44,11 +44,11 @@ async def lifespan(app: FastAPI):
     # Startup
     start_time = time.time()
     stats_client = get_stats_client()
-    
+
     try:
         count = store.load_from_s3()
         logger.info("startup", keys_loaded=count)
-        
+
         # Track startup metrics
         if stats_client:
             try:
@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
                 pass
     except Exception as e:
         logger.error("startup_failed", error=str(e))
-        
+
         # Track startup failure
         if stats_client:
             try:
@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
                     pipe.incr('startup.failed')
             except Exception:
                 pass
-        
+
         raise
 
     yield
@@ -109,7 +109,7 @@ async def verify(request: VerifyRequest, http_request: Request):
     """
     start_time = time.time()
     user_agent = http_request.headers.get("user-agent", "unknown")
-    
+
     # Get stats client
     stats_client = get_stats_client()
 
@@ -122,7 +122,7 @@ async def verify(request: VerifyRequest, http_request: Request):
             secret_prefix=request.api_key[:4] if len(request.api_key) >= 4 else "***",
             user_agent=user_agent,
         )
-        
+
         # Track failed verification
         if stats_client:
             try:
@@ -132,7 +132,7 @@ async def verify(request: VerifyRequest, http_request: Request):
                     pipe.time('verify.duration', (time.time() - start_time) * 1000)
             except Exception:
                 pass  # Don't let metrics failures affect the API
-        
+
         raise HTTPException(status_code=403, detail={"valid": False, "error": "Invalid API key"})
 
     # Log successful verification with key_id (NOT secret)
@@ -142,7 +142,7 @@ async def verify(request: VerifyRequest, http_request: Request):
         key_name=key_data["name"],
         user_agent=user_agent,
     )
-    
+
     # Track successful verification
     if stats_client:
         try:
@@ -177,7 +177,7 @@ async def refresh(request: Request):
     """
     start_time = time.time()
     stats_client = get_stats_client()
-    
+
     # Check if request is from localhost
     client_host = request.client.host if request.client else None
     forwarded_for = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
@@ -188,7 +188,7 @@ async def refresh(request: Request):
         "",
     ):
         logger.warning("refresh_rejected", client_host=client_host, forwarded_for=forwarded_for)
-        
+
         # Track rejected refresh
         if stats_client:
             try:
@@ -197,7 +197,7 @@ async def refresh(request: Request):
                     pipe.incr('refresh.rejected')
             except Exception:
                 pass
-        
+
         raise HTTPException(
             status_code=403, detail={"error": "Refresh endpoint only accessible from localhost"}
         )
@@ -205,7 +205,7 @@ async def refresh(request: Request):
     try:
         count = store.load_from_s3()
         logger.info("refresh_success", keys_loaded=count)
-        
+
         # Track successful refresh
         if stats_client:
             try:
@@ -224,7 +224,7 @@ async def refresh(request: Request):
         )
     except Exception as e:
         logger.error("refresh_failed", error=str(e))
-        
+
         # Track failed refresh
         if stats_client:
             try:
@@ -233,7 +233,7 @@ async def refresh(request: Request):
                     pipe.incr('refresh.failed')
             except Exception:
                 pass
-        
+
         raise HTTPException(status_code=500, detail={"error": f"Failed to refresh keys: {str(e)}"})
 
 
@@ -247,7 +247,7 @@ async def health():
     """
     stats_client = get_stats_client()
     keys_count = len(store.keys_by_secret)
-    
+
     # Track health check
     if stats_client:
         try:
@@ -256,6 +256,6 @@ async def health():
                 pipe.gauge('keys.count', keys_count)
         except Exception:
             pass
-    
+
     # Return minimal response - just "ok" without revealing it's an auth service
     return {"status": "ok"}
