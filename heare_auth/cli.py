@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 from heare import ids
 
 from .models import SecretType
+from .storage import KeyStore
 
 
 def generate_key_pair() -> tuple[str, str]:
@@ -53,15 +54,13 @@ class CLI:
         Returns:
             List of key dictionaries
         """
-        from .storage import KeyStore
-        
         store = KeyStore(
             bucket=self.bucket,
             key=self.key,
             region="us-east-1",
             storage_secret=self.storage_secret,
         )
-        
+
         try:
             store.load_from_s3()
             return store.get_all_keys()
@@ -77,8 +76,6 @@ class CLI:
         Args:
             keys: List of key dictionaries to save
         """
-        from .storage import KeyStore
-        
         store = KeyStore(
             bucket=self.bucket,
             key=self.key,
@@ -184,6 +181,56 @@ class CLI:
 
         return key_to_delete
 
+    def update_metadata(self, key_id: str, metadata: dict, merge: bool = False,
+                        refresh_url: str | None = None) -> dict:
+        """
+        Update metadata for an existing API key.
+
+        Args:
+            key_id: The key ID to update
+            metadata: New metadata dictionary
+            merge: If True, merge with existing metadata; if False, replace
+            refresh_url: Optional URL to trigger refresh
+
+        Returns:
+            The updated key dictionary
+
+        Raises:
+            ValueError: If the key is not found
+        """
+        keys = self.load_keys()
+
+        key_to_update = None
+        for k in keys:
+            if k["id"] == key_id:
+                key_to_update = k
+                break
+
+        if not key_to_update:
+            raise ValueError(f"API key not found: {key_id}")
+
+        if merge:
+            existing = key_to_update.get("metadata", {})
+            existing.update(metadata)
+            key_to_update["metadata"] = existing
+        else:
+            key_to_update["metadata"] = metadata
+
+        key_to_update["updated_at"] = (
+            datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        )
+
+        self.save_keys(keys)
+
+        # Trigger refresh if URL provided
+        if refresh_url:
+            try:
+                requests.post(refresh_url, timeout=5)
+            except Exception as e:
+                click.echo(f"Warning: Failed to refresh service: {e}", err=True)
+
+        return key_to_update
+
 
 @click.group()
 def main():
@@ -243,8 +290,8 @@ def create(name, metadata, secret_type, expires_at, bucket, key, region, storage
         if new_key.get('expires_at'):
             click.echo(f"  Expires:     {new_key['expires_at']}")
         else:
-            click.echo(f"  Expires:     Never")
-        
+            click.echo("  Expires:     Never")
+
         # Try to refresh if not skipped
         if not no_refresh:
             try:
@@ -257,7 +304,7 @@ def create(name, metadata, secret_type, expires_at, bucket, key, region, storage
                 click.echo(f"\n⚠️  Warning: Could not refresh service: {e}", err=True)
                 click.echo("   The key was created but the service was not refreshed.", err=True)
                 click.echo("   Run 'heare-auth refresh' manually to load the new key.", err=True)
-        
+
         click.echo("\n⚠️  Save the SECRET securely - it will not be shown again!")
         click.echo("    Use the ID for reference and logging.")
     except Exception as e:
@@ -328,13 +375,13 @@ def show(key_id, bucket, key, region, storage_secret):
     try:
         cli = CLI(bucket, key, region, storage_secret)
         keys = cli.list_keys()
-        
+
         key_data = next((k for k in keys if k["id"] == key_id), None)
-        
+
         if not key_data:
             click.echo(f"Error: API key not found: {key_id}", err=True)
             sys.exit(1)
-        
+
         click.echo("\nAPI Key Details:")
         click.echo("━" * 80)
         click.echo(f"Name:        {key_data['name']}")
@@ -347,7 +394,7 @@ def show(key_id, bucket, key, region, storage_secret):
             click.echo(f"Metadata:    {json.dumps(key_data['metadata'], indent=2)}")
         click.echo("━" * 80)
         click.echo("\n⚠️  The secret is not shown for security reasons.")
-        
+
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -382,7 +429,7 @@ def delete(key_id, bucket, key, region, storage_secret, refresh_url, no_refresh,
 
         cli.delete(key_id, refresh_url if not no_refresh else None)
         click.echo("✓ Deleted successfully.")
-        
+
         # Try to refresh if not skipped
         if not no_refresh:
             try:
@@ -400,6 +447,151 @@ def delete(key_id, bucket, key, region, storage_secret, refresh_url, no_refresh,
         sys.exit(1)
 
 
+@main.command("set-metadata")
+@click.argument("key_id")
+@click.argument("metadata")
+@click.option("--merge", is_flag=True, help="Merge with existing metadata instead of replacing")
+@click.option("--bucket", envvar="S3_BUCKET", required=True, help="S3 bucket name")
+@click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
+@click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
+@click.option("--storage-secret", envvar="STORAGE_SECRET", help="Secret for encrypting data at rest")
+@click.option("--refresh-url", envvar="REFRESH_URL", default="http://localhost:8080/refresh",
+              help="URL to trigger refresh")
+@click.option("--no-refresh", is_flag=True, help="Skip automatic refresh")
+def set_metadata(
+    key_id, metadata, merge, bucket, key, region,
+    storage_secret, refresh_url, no_refresh,
+):
+    """Set or update metadata for an API key.
+
+    METADATA should be a JSON string, e.g. '{"env": "production", "team": "backend"}'
+    """
+    try:
+        metadata_dict = json.loads(metadata)
+    except json.JSONDecodeError as e:
+        click.echo(f"Error: Invalid JSON in metadata: {e}", err=True)
+        sys.exit(1)
+
+    if not isinstance(metadata_dict, dict):
+        click.echo("Error: Metadata must be a JSON object (dict), not a list or scalar.", err=True)
+        sys.exit(1)
+
+    try:
+        cli = CLI(bucket, key, region, storage_secret)
+        updated_key = cli.update_metadata(
+            key_id,
+            metadata_dict,
+            merge=merge,
+            refresh_url=refresh_url if not no_refresh else None,
+        )
+
+        click.echo(f"\n✓ Metadata updated for key: {updated_key['id']}")
+        click.echo(f"  Name:     {updated_key['name']}")
+        click.echo(f"  Metadata: {json.dumps(updated_key['metadata'], indent=2)}")
+
+        # Try to refresh if not skipped
+        if not no_refresh:
+            try:
+                response = requests.post(refresh_url, timeout=5)
+                response.raise_for_status()
+                data = response.json()
+                if data.get("success"):
+                    click.echo(f"\n✓ Service refreshed - {data.get('keys_loaded', 0)} keys loaded")
+            except Exception as e:
+                click.echo(f"\n⚠️  Warning: Could not refresh service: {e}", err=True)
+                click.echo(
+                    "   The metadata was updated but the service"
+                    " was not refreshed.", err=True,
+                )
+                click.echo("   Run 'heare-auth refresh' manually to apply the change.", err=True)
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("api_key")
+@click.option("--url", envvar="VERIFY_URL", default="http://localhost:8080/verify",
+              help="Verify endpoint URL")
+@click.option("--bucket", envvar="S3_BUCKET",
+              help="S3 bucket (for local verification"
+              " without a running service)")
+@click.option("--key", envvar="S3_KEY", default="keys.json", help="S3 key path")
+@click.option("--region", envvar="S3_REGION", default="us-east-1", help="AWS region")
+@click.option("--storage-secret", envvar="STORAGE_SECRET", help="Secret for encrypting data at rest")
+@click.option("--local", is_flag=True,
+              help="Verify directly against S3"
+              " instead of the running service")
+def verify(api_key, url, bucket, key, region, storage_secret, local):
+    """Verify an API key against the running service or directly against S3.
+
+    By default, sends the key to the running service's /verify endpoint.
+    Use --local to verify directly against S3 storage (no running service needed).
+    """
+    if local:
+        if not bucket:
+            click.echo("Error: --bucket is required for local verification.", err=True)
+            sys.exit(1)
+
+        try:
+            store = KeyStore(bucket, key, region, storage_secret)
+            store.load_from_s3()
+            key_data = store.get_by_secret(api_key)
+
+            if key_data is None:
+                click.echo("✗ Invalid API key.", err=True)
+                sys.exit(1)
+
+            click.echo("✓ Valid API key.")
+            click.echo(f"  Key ID:   {key_data['id']}")
+            click.echo(f"  Name:     {key_data['name']}")
+            if key_data.get("expires_at"):
+                click.echo(f"  Expires:  {key_data['expires_at']}")
+            else:
+                click.echo("  Expires:  Never")
+            if key_data.get("metadata"):
+                click.echo(f"  Metadata: {json.dumps(key_data['metadata'], indent=2)}")
+        except Exception as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+    else:
+        try:
+            response = requests.post(url, json={"api_key": api_key}, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                click.echo("✓ Valid API key.")
+                click.echo(f"  Key ID:   {data.get('key_id', 'N/A')}")
+                click.echo(f"  Name:     {data.get('name', 'N/A')}")
+                if data.get("metadata"):
+                    click.echo(f"  Metadata: {json.dumps(data['metadata'], indent=2)}")
+            elif response.status_code == 403:
+                click.echo("✗ Invalid API key.", err=True)
+                sys.exit(1)
+            else:
+                click.echo(f"✗ Unexpected response: {response.status_code}", err=True)
+                try:
+                    click.echo(f"  {response.json()}", err=True)
+                except Exception:
+                    click.echo(f"  {response.text}", err=True)
+                sys.exit(1)
+        except requests.exceptions.ConnectionError:
+            click.echo("Error: Could not connect to the auth service.", err=True)
+            click.echo(f"  URL: {url}", err=True)
+            click.echo(
+                "\nTip: Use --local to verify directly"
+                " against S3 without a running service.",
+                err=True,
+            )
+            sys.exit(1)
+        except requests.exceptions.RequestException as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+
+
 @main.command()
 @click.option("--url", default="http://localhost:8080/refresh", help="Refresh endpoint URL")
 def refresh(url):
@@ -408,7 +600,7 @@ def refresh(url):
         response = requests.post(url, timeout=5)
         response.raise_for_status()
         data = response.json()
-        
+
         if data.get("success"):
             click.echo(f"✓ Refresh successful - loaded {data.get('keys_loaded', 0)} keys")
         else:

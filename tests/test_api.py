@@ -56,6 +56,45 @@ def test_verify_invalid_key():
     assert response.status_code == 403
 
 
+def test_verify_returns_metadata(setup_test_keys):
+    """Test that verify response includes key metadata."""
+    response = client.post("/verify", json={"api_key": "sec_test123"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "metadata" in data
+    assert data["metadata"] == {"env": "test"}
+
+
+def test_verify_returns_empty_metadata_when_none():
+    """Test that verify response includes empty metadata dict when key has none."""
+    store.keys_by_secret = {
+        "sec_nometadata": {
+            "id": "key_nometadata",
+            "secret": "sec_nometadata",
+            "name": "No Metadata Key",
+        }
+    }
+    store.keys_by_id = {
+        "key_nometadata": {
+            "id": "key_nometadata",
+            "secret": "sec_nometadata",
+            "name": "No Metadata Key",
+        }
+    }
+
+    response = client.post("/verify", json={"api_key": "sec_nometadata"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "metadata" in data
+    assert data["metadata"] == {}
+
+    # Cleanup
+    store.keys_by_secret = {}
+    store.keys_by_id = {}
+
+
 def test_verify_missing_api_key():
     """Test verify endpoint with missing api_key field."""
     response = client.post("/verify", json={})

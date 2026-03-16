@@ -3,7 +3,6 @@
 import base64
 import hashlib
 import json
-import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -14,7 +13,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 class KeyStore:
     """Manage API keys in S3 and memory with optional encryption."""
-    
+
     ENCRYPTION_HEADER = b"HEARE_ENCRYPTED_V1:"
 
     def __init__(self, bucket: str, key: str, region: str = "us-east-1", storage_secret: Optional[str] = None):
@@ -32,7 +31,7 @@ class KeyStore:
         self.s3 = boto3.client("s3", region_name=region)
         self.keys_by_secret: Dict[str, dict] = {}  # secret -> full key data
         self.keys_by_id: Dict[str, dict] = {}  # id -> full key data
-        
+
         # Set up encryption if storage_secret is provided
         self.encryption_enabled = storage_secret is not None
         self.fernet = None
@@ -56,17 +55,17 @@ class KeyStore:
         if raw_data.startswith(self.ENCRYPTION_HEADER):
             if not self.fernet:
                 raise ValueError("Data is encrypted but no STORAGE_SECRET provided")
-            
+
             # Remove header and decrypt
             encrypted_payload = raw_data[len(self.ENCRYPTION_HEADER):]
             try:
                 return self.fernet.decrypt(encrypted_payload)
             except InvalidToken:
                 raise ValueError("Failed to decrypt data - invalid STORAGE_SECRET")
-        
+
         # Data is not encrypted
         return raw_data
-    
+
     def _encrypt_data(self, data: bytes) -> bytes:
         """
         Encrypt data if encryption is enabled.
@@ -80,7 +79,7 @@ class KeyStore:
         if self.encryption_enabled and self.fernet:
             encrypted = self.fernet.encrypt(data)
             return self.ENCRYPTION_HEADER + encrypted
-        
+
         # No encryption
         return data
 
@@ -96,10 +95,10 @@ class KeyStore:
         try:
             response = self.s3.get_object(Bucket=self.bucket, Key=self.key)
             raw_data = response["Body"].read()
-            
+
             # Decrypt if needed
             decrypted_data = self._decrypt_data(raw_data)
-            
+
             # Parse JSON
             data = json.loads(decrypted_data)
 
@@ -125,10 +124,10 @@ class KeyStore:
         """
         data = {"keys": keys}
         json_data = json.dumps(data, indent=2).encode('utf-8')
-        
+
         # Encrypt if enabled
         body_data = self._encrypt_data(json_data)
-        
+
         self.s3.put_object(
             Bucket=self.bucket,
             Key=self.key,
@@ -149,10 +148,10 @@ class KeyStore:
             Key data dictionary if found and not expired, None otherwise
         """
         key_data = self.keys_by_secret.get(secret)
-        
+
         if key_data is None:
             return None
-        
+
         # Check if expired
         expires_at = key_data.get("expires_at")
         if expires_at:
@@ -164,7 +163,7 @@ class KeyStore:
             except (ValueError, AttributeError):
                 # Invalid expiry format, treat as not expired
                 pass
-        
+
         return key_data
 
     def get_by_id(self, key_id: str) -> Optional[dict]:

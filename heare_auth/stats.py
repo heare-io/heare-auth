@@ -3,8 +3,8 @@ Statistics/metrics client for heare-auth.
 """
 import os
 from typing import Optional
-from heare.stats.client import HttpClient, BaseStatsClient
 
+from heare.stats.client import BaseStatsClient, HttpClient
 
 _stats_client: Optional[BaseStatsClient] = None
 
@@ -16,10 +16,10 @@ def get_stats_client() -> Optional[BaseStatsClient]:
     Returns None if stats are disabled or not properly configured.
     """
     global _stats_client
-    
+
     if _stats_client is None:
         _stats_client = _initialize_stats_client()
-    
+
     return _stats_client
 
 
@@ -29,20 +29,20 @@ def _initialize_stats_client() -> Optional[BaseStatsClient]:
     dest_host = os.environ.get('DEST_HOST', '')
     dest_port = os.environ.get('DEST_PORT', '')
     secret = os.environ.get('SECRET', '')
-    
+
     # Only initialize if we have the required configuration
     if not (protocol and dest_host and dest_port):
         return None
-    
+
     try:
         port = int(dest_port)
     except ValueError:
         return None
-    
+
     # Currently only HTTP is supported
     if protocol != 'http':
         return None
-    
+
     return HttpClient(
         host=dest_host,
         port=port,
